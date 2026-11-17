@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scanner">
+<title>Pocket Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one-screen phone app. Fixed header and bottom tabs, a single scrolling
+   column of dense rows between them, bottom sheets for detail and editing. */
+:root{
+  --bg:#edf0f5; --surface:#ffffff; --surface2:#e2e7ef; --ink:#121a27; --muted:#566277; --line:#cfd6e1;
+  --accent:#a85f00; --accent-ink:#ffffff; --up:#0a7558; --down:#bf352e;
+  --font-ui:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d131c; --surface:#151d29; --surface2:#1f2a3a; --ink:#e7ecf3; --muted:#8d9ab0; --line:#293447;
+    --accent:#f0a63a; --accent-ink:#1b1203; --up:#3fcc9e; --down:#ff7d6e; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d131c; --surface:#151d29; --surface2:#1f2a3a; --ink:#e7ecf3; --muted:#8d9ab0; --line:#293447;
+  --accent:#f0a63a; --accent-ink:#1b1203; --up:#3fcc9e; --down:#ff7d6e; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+main>*,.sheet-body>*{flex:none}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:15px;line-height:1.35;-webkit-text-size-adjust:100%;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)} .muted{color:var(--muted)}
+.app{height:100%;max-width:560px;margin:0 auto;display:flex;flex-direction:column;background:var(--bg)}
+
+header{padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);background:var(--surface)}
+.brand{font-weight:700;font-size:17px;letter-spacing:-.01em;margin-right:auto;white-space:nowrap}
+.brand span{color:var(--accent)}
+.pill{font-family:var(--font-num);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface2);white-space:nowrap;display:flex;align-items:center;gap:6px}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--muted);display:block}
+.pill.sim i{background:var(--accent)} .pill.live i{background:var(--up)} .pill.err i{background:var(--down)}
+.iconbtn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;flex:none}
+.iconbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.banner{padding:8px 16px;background:color-mix(in srgb,var(--accent) 14%,var(--bg));border-bottom:1px solid var(--line);font-size:13px;display:flex;gap:10px;align-items:center}
+.banner p{margin:0;flex:1}
+.linkbtn{background:none;border:0;padding:4px 0;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+
+main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px 20px;display:flex;flex-direction:column;gap:10px}
+h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 0 0;text-wrap:balance}
+.summary{display:flex;gap:10px;align-items:baseline}
+.summary span{font-size:13px}
+.summary b{font-family:var(--font-num);font-size:22px;font-weight:600}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:500;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+.list{display:flex;flex-direction:column;gap:8px}
+.alert{display:grid;grid-template-columns:4px 1fr;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden;text-align:left;padding:0;width:100%}
+.alert .stripe{background:var(--up)} .alert.short .stripe{background:var(--down)}
+.alert .body{padding:10px 12px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.row{display:flex;align-items:baseline;gap:10px}
+.sym{font-weight:700;font-size:16px;letter-spacing:.01em}
+.grow{flex:1;min-width:0}
+.tags{display:flex;flex-wrap:wrap;gap:5px}
+.tag{font-size:11.5px;padding:2px 7px;border-radius:5px;background:var(--surface2);color:var(--ink)}
+.side{font-size:10.5px;font-weight:700;letter-spacing:.07em;padding:2px 6px;border-radius:4px;color:var(--up);border:1px solid currentColor}
+.side.short{color:var(--down)}
+.fresh{animation:pop .5s ease-out}
+@keyframes pop{from{transform:translateY(-6px);opacity:.3}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.fresh{animation:none}.sheet{transition:none!important}}
+
+.card{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:12px;display:flex;flex-direction:column;gap:8px}
+.card .logic{font-size:13.5px;color:var(--muted)}
+.card .stat{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px}
+.switch{flex:none;width:46px;height:28px;border-radius:999px;border:1px solid var(--line);background:var(--surface2);position:relative;padding:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--muted);transition:transform .15s}
+.switch[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.switch[aria-checked="true"]::after{transform:translateX(18px);background:var(--accent-ink)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:9px 14px;font-weight:600;font-size:14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--down)}
+.btn.small{padding:6px 10px;font-size:13px}
+.btn.block{width:100%;padding:12px}
+
+.table{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.trow{display:grid;grid-template-columns:26px 1fr auto auto;gap:10px;align-items:baseline;padding:10px 12px;border-top:1px solid var(--line);width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left}
+.trow:first-child{border-top:0}
+.trow .rank{font-family:var(--font-num);font-size:12px;color:var(--muted)}
+.trow .nm{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.trow .val{min-width:70px;text-align:right}
+.empty{padding:22px 14px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px;font-size:14px}
+
+.news{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:11px 12px;display:flex;flex-direction:column;gap:6px;color:inherit;text-decoration:none}
+.news .hl{font-weight:600;font-size:15px;line-height:1.3;text-wrap:balance}
+.news .meta{font-size:12px;color:var(--muted)}
+
+nav{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);background:var(--surface);padding-bottom:env(safe-area-inset-bottom)}
+nav a{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px 8px;font-size:11.5px;font-weight:600;color:var(--muted);text-decoration:none;position:relative}
+nav a svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav a[aria-current="page"]{color:var(--ink)}
+nav a[aria-current="page"]::before{content:"";position:absolute;top:-1px;left:25%;right:25%;height:2px;background:var(--accent)}
+.badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:17px;height:17px;border-radius:9px;background:var(--accent);color:var(--accent-ink);font-family:var(--font-num);font-size:10.5px;display:grid;place-items:center;padding:0 4px}
+
+.scrim{position:fixed;inset:0;background:rgba(5,9,15,.5);display:none;z-index:10}
+.scrim.open{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;max-height:92%;background:var(--bg);border-radius:16px 16px 0 0;border:1px solid var(--line);border-bottom:0;z-index:11;display:flex;flex-direction:column;transform:translateY(105%);transition:transform .22s ease-out;visibility:hidden}
+.sheet.open{transform:none;visibility:visible}
+.sheet-head{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.sheet-head h3{margin:0;font-size:17px;flex:1;min-width:0}
+.sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px calc(env(safe-area-inset-bottom) + 20px);display:flex;flex-direction:column;gap:14px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label,.legend{font-size:12.5px;font-weight:600;color:var(--muted)}
+.field input[type=text],.field input[type=password],.field input[type=number],.field select{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:10px 11px;font-size:16px;width:100%;min-width:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.seg label{flex:1;text-align:center;padding:9px 6px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-left:1px solid var(--line)}
+.seg label:first-of-type{border-left:0}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg input:checked + label{background:var(--ink);color:var(--bg)}
+.seg input:focus-visible + label{outline:2px solid var(--accent);outline-offset:-2px}
+.trig{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.trig:first-of-type{border-top:0}
+.trig input[type=checkbox],.check input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+.trig label{flex:1;font-size:14.5px}
+.trig input.p{width:74px;flex:none;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:6px 7px;font-size:15px;font-family:var(--font-num)}
+.trig input.p:disabled{opacity:.35}
+.trig small{color:var(--muted);font-size:11.5px;width:34px}
+.group{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:4px 12px}
+.group h4{margin:8px 0 2px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.check{display:flex;gap:10px;align-items:center;font-size:14.5px}
+.msg{font-size:13.5px;padding:9px 11px;border-radius:9px;background:var(--surface2)}
+.msg.bad{color:var(--down)} .msg.good{color:var(--up)}
+.note{font-size:13px;color:var(--muted);margin:0;max-width:65ch}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stats div{background:var(--surface);padding:9px 11px;display:flex;justify-content:space-between;gap:8px;font-size:13.5px}
+.stats div span:first-child{color:var(--muted)}
+.big{font-family:var(--font-num);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.range{position:relative;height:6px;border-radius:3px;background:var(--surface2);margin:6px 0 2px}
+.range i{position:absolute;top:-4px;width:4px;height:14px;border-radius:2px;background:var(--accent);transform:translateX(-2px)}
+.spark{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.symchips{display:flex;flex-wrap:wrap;gap:6px}
+.symchip{display:flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 4px 5px 9px;font-weight:600;font-size:13.5px}
+.symchip button{border:0;background:none;padding:0 5px;font-size:16px;line-height:1;color:var(--muted)}
+.symchip.lock{padding-right:9px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">Pocket <span>Scanner</span></div>
+    <div class="pill sim" id="status"><i></i><span id="statusText">STARTING</span></div>
+    <button class="iconbtn" data-act="open-settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.8H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.8-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.8h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.1z"/></svg>
+    </button>
+  </header>
+  <div class="banner" id="simBanner">
+    <p>Practice mode. Prices are simulated, not real quotes.</p>
+    <button class="linkbtn" data-act="open-settings">Connect Alpaca</button>
+  </div>
+  <main id="main"></main>
+  <nav aria-label="Sections">
+    <a href="#alerts" data-view="alerts"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>Alerts<span class="badge" id="badge" hidden>0</span></a>
+    <a href="#setups" data-view="setups"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Setups</a>
+    <a href="#rankings" data-view="rankings"><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Rankings</a>
+    <a href="#news" data-view="news"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h6M7 13h10M7 16h7"/></svg>News</a>
+  </nav>
+</div>
+<div class="scrim" id="scrim" data-act="close-sheet"></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-head"><h3 id="sheetTitle"></h3><button class="btn small" data-act="close-sheet">Close</button></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</section>
+
+<script id="engine">
+/* ===== Scanner engine: no page access, so it can be tested on its own ===== */
+const ET = (() => {
+  const f = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', hourCycle:'h23', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const cache = new Map();
+  function offset(ms){
+    const k = Math.floor(ms / 21600000);
+    let o = cache.get(k);
+    if (o === undefined){
+      const p = {}; for (const x of f.formatToParts(new Date(ms))) p[x.type] = x.value;
+      o = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(ms / 1000) * 1000;
+      cache.set(k, o);
+    }
+    return o;
+  }
+  function parts(ms){ const d = new Date(ms + offset(ms)); return {key: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes()}; }
+  function time(ms){ const m = parts(ms).min; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  function open(key){ const [y, m, d] = key.split('-').map(Number); const g = Date.UTC(y, m - 1, d, 9, 30); return g - offset(g); }
+  return {offset, parts, time, open};
+})();
+
+function orRange(s, p){
+  const last = s.bars[s.bars.length - 1];
+  if (!last || last.m < p) return null;
+  if (s.or[p] !== undefined) return s.or[p];
+  let h = -Infinity, l = Infinity;
+  for (const b of s.bars){ if (b.m >= p) break; if (b.h > h) h = b.h; if (b.l < l) l = b.l; }
+  return (s.or[p] = h === -Infinity ? null : {h, l});
+}
+const spyGap = (s, E) => { const spy = E.states.get('SPY'); return (!spy || s.sym === 'SPY' || spy.dateKey !== s.dateKey) ? null : s.chg - spy.chg; };
+const body = b => Math.abs(b.c - b.o);
+const prevBar = s => s.bars[s.bars.length - 2];
+const P = (label, def, unit, step) => ({label, def, unit, step: step || 0.1});
+
+const TRIGGERS = {
+  hod:{g:'Levels', name:'New high of day', label:() => 'New high of day', fn:(s, b) => s.bars.length > 1 && b.c > s.hiBefore},
+  lod:{g:'Levels', name:'New low of day', label:() => 'New low of day', fn:(s, b) => s.bars.length > 1 && b.c < s.loBefore},
+  pdh:{g:'Levels', name:'Breaks previous day high', label:() => 'Above prev day high', fn:(s, b) => s.pdHigh != null && s.prevC <= s.pdHigh && b.c > s.pdHigh},
+  pdl:{g:'Levels', name:'Breaks previous day low', label:() => 'Below prev day low', fn:(s, b) => s.pdLow != null && s.prevC >= s.pdLow && b.c < s.pdLow},
+  gap_up:{g:'Levels', name:'Gapped up at the open', param:P('Gap', 1, '%'), label:p => `Gap up ≥${p}%`, fn:(s, b, p) => s.pdClose != null && (s.open / s.pdClose - 1) * 100 >= p},
+  gap_dn:{g:'Levels', name:'Gapped down at the open', param:P('Gap', 1, '%'), label:p => `Gap down ≥${p}%`, fn:(s, b, p) => s.pdClose != null && (1 - s.open / s.pdClose) * 100 >= p},
+  orb_up:{g:'Opening range', name:'Breaks above opening range', param:P('Range', 15, 'min', 1), label:p => `ORB ${p}m up`, fn:(s, b, p) => { const r = orRange(s, p); return !!r && s.prevC <= r.h && b.c > r.h; }},
+  orb_dn:{g:'Opening range', name:'Breaks below opening range', param:P('Range', 15, 'min', 1), label:p => `ORB ${p}m down`, fn:(s, b, p) => { const r = orRange(s, p); return !!r && s.prevC >= r.l && b.c < r.l; }},
+  vwap_up:{g:'VWAP and EMA', name:'Crosses above VWAP', label:() => 'VWAP cross up', fn:(s, b) => s.vwapPrev != null && s.prevC <= s.vwapPrev && b.c > s.vwap},
+  vwap_dn:{g:'VWAP and EMA', name:'Crosses below VWAP', label:() => 'VWAP cross down', fn:(s, b) => s.vwapPrev != null && s.prevC >= s.vwapPrev && b.c < s.vwap},
+  above_vwap:{g:'VWAP and EMA', name:'Trading above VWAP', label:() => 'Above VWAP', fn:(s, b) => s.bars.length > 1 && b.c > s.vwap},
+  below_vwap:{g:'VWAP and EMA', name:'Trading below VWAP', label:() => 'Below VWAP', fn:(s, b) => s.bars.length > 1 && b.c < s.vwap},
+  ema_up:{g:'VWAP and EMA', name:'EMA 9 crosses above EMA 20', label:() => 'EMA 9/20 cross up', fn:s => s.emaN > 20 && s.ema9Prev <= s.ema20Prev && s.ema9 > s.ema20},
+  ema_dn:{g:'VWAP and EMA', name:'EMA 9 crosses below EMA 20', label:() => 'EMA 9/20 cross down', fn:s => s.emaN > 20 && s.ema9Prev >= s.ema20Prev && s.ema9 < s.ema20},
+  ema_bounce:{g:'VWAP and EMA', name:'Pullback holds EMA 20 in an uptrend', label:() => 'EMA 20 bounce', fn:(s, b) => s.emaN > 20 && s.ema9 > s.ema20 && b.l <= s.ema20 && b.c > s.ema20 && b.c > b.o},
+  vol_spike:{g:'Volume and momentum', name:'Volume spike vs last 20 bars', param:P('At least', 2, '×'), label:p => `Volume ≥${p}×`, fn:(s, b, p) => s.avgVol > 0 && b.v >= p * s.avgVol},
+  mom_up:{g:'Volume and momentum', name:'Up fast over 5 minutes', param:P('Move', 0.5, '%'), label:p => `+${p}% in 5m`, fn:(s, b, p) => { const i = s.bars.length - 1; return i >= 5 && (b.c / s.bars[i - 5].c - 1) * 100 >= p; }},
+  mom_dn:{g:'Volume and momentum', name:'Down fast over 5 minutes', param:P('Move', 0.5, '%'), label:p => `−${p}% in 5m`, fn:(s, b, p) => { const i = s.bars.length - 1; return i >= 5 && (1 - b.c / s.bars[i - 5].c) * 100 >= p; }},
+  three_up:{g:'Candles', name:'Three rising green bars', label:() => '3 green bars', fn:s => { const n = s.bars.length; if (n < 3) return false; const [a, b, c] = s.bars.slice(n - 3); return a.c > a.o && b.c > b.o && c.c > c.o && b.c > a.c && c.c > b.c; }},
+  three_dn:{g:'Candles', name:'Three falling red bars', label:() => '3 red bars', fn:s => { const n = s.bars.length; if (n < 3) return false; const [a, b, c] = s.bars.slice(n - 3); return a.c < a.o && b.c < b.o && c.c < c.o && b.c < a.c && c.c < b.c; }},
+  engulf_bull:{g:'Candles', name:'Bullish engulfing', label:() => 'Bullish engulfing', fn:(s, b) => { const p = prevBar(s); return !!p && p.c < p.o && b.c > b.o && b.c >= p.o && b.o <= p.c; }},
+  engulf_bear:{g:'Candles', name:'Bearish engulfing', label:() => 'Bearish engulfing', fn:(s, b) => { const p = prevBar(s); return !!p && p.c > p.o && b.c < b.o && b.c <= p.o && b.o >= p.c; }},
+  hammer:{g:'Candles', name:'Hammer (long lower wick)', label:() => 'Hammer', fn:(s, b) => { const r = b.h - b.l; return r > 0 && Math.min(b.o, b.c) - b.l >= 2 * body(b) && b.h - Math.max(b.o, b.c) <= 0.25 * r && Math.min(b.o, b.c) - b.l >= 0.5 * r; }},
+  star:{g:'Candles', name:'Shooting star (long upper wick)', label:() => 'Shooting star', fn:(s, b) => { const r = b.h - b.l; return r > 0 && b.h - Math.max(b.o, b.c) >= 2 * body(b) && Math.min(b.o, b.c) - b.l <= 0.25 * r && b.h - Math.max(b.o, b.c) >= 0.5 * r; }},
+  rs_strong:{g:'Relative strength', name:'Stronger than SPY today', param:P('By', 0.5, '%'), label:p => `Beats SPY by ${p}%`, fn:(s, b, p, E) => { const g = spyGap(s, E); return g != null && g >= p; }},
+  rs_weak:{g:'Relative strength', name:'Weaker than SPY today', param:P('By', 0.5, '%'), label:p => `Lags SPY by ${p}%`, fn:(s, b, p, E) => { const g = spyGap(s, E); return g != null && -g >= p; }},
+};
+const trigParam = tr => { const d = TRIGGERS[tr.id]; return d && d.param ? (tr.p != null && tr.p !== '' && !isNaN(+tr.p) ? +tr.p : d.param.def) : undefined; };
+const trigLabel = tr => { const d = TRIGGERS[tr.id]; return d ? d.label(trigParam(tr)) : tr.id; };
+
+function createEngine(){
+  const E = {states:new Map(), setups:[], alerts:[], stats:{}, cool:new Map(), alertFrom:'', onAlert:null, seq:0};
+  E.reset = () => { E.states.clear(); E.alerts = []; E.stats = {}; E.cool.clear(); };
+  E.state = sym => {
+    let s = E.states.get(sym);
+    if (!s){ s = {sym, dateKey:'', bars:[], hi:-Infinity, lo:Infinity, or:{}, ema9:null, ema20:null, emaN:0, pdHigh:null, pdLow:null, pdClose:null, vwap:null, dayVol:0, chg:0, last:null}; E.states.set(sym, s); }
+    return s;
+  };
+  E.onBar = (sym, b, opts) => {
+    const p = ET.parts(b.t);
+    if (p.min < 570 || p.min >= 960) return [];            // regular session only
+    const s = E.state(sym);
+    if (s.dateKey !== p.key){
+      if (s.dateKey && p.key < s.dateKey) return [];
+      if (s.bars.length){ s.pdHigh = s.hi; s.pdLow = s.lo; s.pdClose = s.last; }
+      s.dateKey = p.key; s.bars = []; s.hi = -Infinity; s.lo = Infinity; s.cumPV = 0; s.cumV = 0; s.dayVol = 0;
+      s.open = b.o; s.or = {}; s.vwap = null; s.lastHodT = 0; s.lastLodT = 0;
+    }
+    const n = s.bars.length, last = s.bars[n - 1];
+    if (last && b.t <= last.t) return [];
+    b.m = p.min - 570;
+    s.hiBefore = s.hi; s.loBefore = s.lo; s.vwapPrev = s.vwap; s.ema9Prev = s.ema9; s.ema20Prev = s.ema20;
+    s.prevC = last ? last.c : b.o;
+    let av = 0, k = 0; for (let i = Math.max(0, n - 20); i < n; i++){ av += s.bars[i].v; k++; }
+    s.avgVol = k >= 5 ? av / k : 0;
+    s.bars.push(b);
+    if (b.h > s.hi) s.hi = b.h; if (b.l < s.lo) s.lo = b.l;
+    s.cumPV += (b.h + b.l + b.c) / 3 * b.v; s.cumV += b.v; s.vwap = s.cumV > 0 ? s.cumPV / s.cumV : b.c;
+    s.ema9 = s.ema9 == null ? b.c : s.ema9 + (b.c - s.ema9) * 0.2;
+    s.ema20 = s.ema20 == null ? b.c : s.ema20 + (b.c - s.ema20) * (2 / 21);
+    s.emaN++; s.dayVol += b.v; s.last = b.c; s.lastT = b.t;
+    s.chg = (b.c / (s.pdClose != null ? s.pdClose : s.open) - 1) * 100;
+    if (n > 0 && b.h > s.hiBefore) s.lastHodT = b.t;
+    if (n > 0 && b.l < s.loBefore) s.lastLodT = b.t;
+    if (p.key < E.alertFrom) return [];
+    return E.evaluate(s, b, opts);
+  };
+  E.blockReason = (st, s, b) => {
+    const c = st.cond || {}, num = v => (v === '' || v == null || isNaN(+v)) ? null : +v;
+    if (num(c.minPrice) != null && b.c < num(c.minPrice)) return 'price under minimum';
+    if (num(c.maxPrice) != null && b.c > num(c.maxPrice)) return 'price over maximum';
+    if (num(c.minDayVol) != null && s.dayVol < num(c.minDayVol) * 1000) return 'day volume too low';
+    if (num(c.minChg) != null && Math.abs(s.chg) < num(c.minChg)) return 'day move too small';
+    return null;
+  };
+  E.evaluate = (s, b, opts) => {
+    const out = [];
+    for (const st of E.setups){
+      const trs = (st.triggers || []).filter(t => TRIGGERS[t.id]);
+      if (!st.on || !trs.length) continue;
+      const hits = trs.filter(tr => { try { return !!TRIGGERS[tr.id].fn(s, b, trigParam(tr), E); } catch (e){ return false; } });
+      const need = st.mode === 'all' ? trs.length : st.mode === 'any' ? 1 : Math.max(1, Math.min(+st.n || 1, trs.length));
+      if (hits.length < need) continue;
+      const stat = E.stats[st.id] || (E.stats[st.id] = {alerts:0, blocked:0, why:{}});
+      const why = E.blockReason(st, s, b);
+      if (why){ stat.blocked++; stat.why[why] = (stat.why[why] || 0) + 1; continue; }
+      const ck = st.id + '|' + s.sym, lt = E.cool.get(ck), cd = (st.cooldown === '' || st.cooldown == null || isNaN(+st.cooldown) ? 10 : +st.cooldown) * 60000;
+      if (lt != null && b.t - lt < cd) continue;
+      E.cool.set(ck, b.t); stat.alerts++;
+      const a = {id: ++E.seq, t: b.t, sym: s.sym, setupId: st.id, setup: st.name, side: st.side, price: b.c, chg: s.chg, rvol: s.avgVol > 0 ? b.v / s.avgVol : null, hits: hits.map(trigLabel)};
+      E.alerts.unshift(a); if (E.alerts.length > 400) E.alerts.pop();
+      out.push(a); if (E.onAlert) E.onAlert(a, opts || {});
+    }
+    return out;
+  };
+  return E;
+}
+
+/* Practice data: a random walk with a shared market factor, trend regimes and volume bursts. */
+const SIM_BASE = {SPY:[590,160], QQQ:[505,110], AAPL:[232,130], MSFT:[430,60], NVDA:[142,520], AMD:[148,110], TSLA:[330,260], AMZN:[205,100], META:[575,35], GOOGL:[178,70], NFLX:[820,9], PLTR:[62,180], COIN:[285,30], SOFI:[13.4,120], F:[11.1,140], BAC:[45,90], XOM:[119,40], DIS:[109,25], UBER:[72,50], SHOP:[108,22], INTC:[24.5,170], MU:[102,55], JPM:[241,24], BA:[151,26]};
+function createSim(){
+  const st = new Map(); let mkt = 0, mktMin = -1;
+  const g = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const get = sym => {
+    let x = st.get(sym);
+    if (!x){
+      let h = 0; for (const ch of sym) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      const base = SIM_BASE[sym] || [8 + h % 240, 15 + h % 90];
+      x = {price: base[0], vol: base[1] * 1000 / 3, sig: sym === 'SPY' || sym === 'QQQ' ? 0.00035 : 0.0008 + (h % 7) * 0.00012, beta: sym === 'SPY' ? 1 : 0.6 + (h % 10) / 10, drift:0, left:0, burst:1, bl:0};
+      st.set(sym, x);
+    }
+    return x;
+  };
+  return {
+    newDay(){ for (const x of st.values()) x.price *= 1 + g() * 0.007; },
+    bar(sym, t, m){
+      if (m !== mktMin){ mktMin = m; mkt = g() * 0.00035; }
+      const x = get(sym), U = 1.6 * Math.exp(-m / 25) + 0.8 * Math.exp(-(389 - m) / 30);
+      if (--x.left <= 0){ x.drift = sym === 'SPY' ? 0 : g() * 0.00045; x.left = 12 + Math.random() * 45; if (Math.random() < 0.3){ x.burst = 1.8 + Math.random() * 3; x.bl = 3 + Math.random() * 7; } }
+      const hot = x.bl-- > 0, sig = x.sig * (1 + U);
+      const r = x.beta * mkt + (hot ? 2.2 : 1) * x.drift + sig * g();
+      const o = x.price, c = Math.max(0.5, o * (1 + r));
+      const h = Math.max(o, c) * (1 + Math.abs(g()) * sig * 0.6), l = Math.min(o, c) * (1 - Math.abs(g()) * sig * 0.6);
+      x.price = c;
+      const v = Math.round(x.vol * (0.5 + U) * Math.exp(g() * 0.45) * (hot ? x.burst : 1) * (1 + 60 * Math.abs(r)));
+      const r2 = n => Math.round(n * 100) / 100;
+      return {t, o: r2(o), h: r2(Math.max(h, o, c)), l: r2(Math.min(l, o, c)), c: r2(c), v};
+    }
+  };
+}
+if (typeof module !== 'undefined') module.exports = {ET, TRIGGERS, createEngine, createSim, trigLabel, orRange};
+</script>
+
+<script>
+/* ===== App ===== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get(k, d){ try { const v = localStorage.getItem('pscan_' + k); return v == null ? d : JSON.parse(v); } catch (e){ return d; } },
+  set(k, v){ try { localStorage.setItem('pscan_' + k, JSON.stringify(v)); } catch (e){} },
+  del(k){ try { localStorage.removeItem('pscan_' + k); } catch (e){} }
+};
+const NAMES = {SPY:'S&P 500 ETF', QQQ:'Nasdaq 100 ETF', AAPL:'Apple', MSFT:'Microsoft', NVDA:'Nvidia', AMD:'Advanced Micro Devices', TSLA:'Tesla', AMZN:'Amazon', META:'Meta Platforms', GOOGL:'Alphabet', NFLX:'Netflix', PLTR:'Palantir', COIN:'Coinbase', SOFI:'SoFi Technologies', F:'Ford Motor', BAC:'Bank of America', XOM:'Exxon Mobil', DIS:'Walt Disney', UBER:'Uber', SHOP:'Shopify', INTC:'Intel', MU:'Micron', JPM:'JPMorgan Chase', BA:'Boeing'};
+const DEFAULT_SETUPS = [
+  {id:'s1', name:'Opening range breakout', side:'long', on:true, mode:'all', n:2, cooldown:15, triggers:[{id:'orb_up', p:15}, {id:'vol_spike', p:1.5}, {id:'above_vwap'}], cond:{minPrice:5}},
+  {id:'s2', name:'VWAP reclaim', side:'long', on:true, mode:'all', n:2, cooldown:15, triggers:[{id:'vwap_up'}, {id:'vol_spike', p:1.5}], cond:{minPrice:5}},
+  {id:'s3', name:'High of day push', side:'long', on:true, mode:'n', n:3, cooldown:20, triggers:[{id:'hod'}, {id:'vol_spike', p:2}, {id:'mom_up', p:0.5}, {id:'rs_strong', p:0.5}], cond:{minPrice:5}},
+  {id:'s4', name:'Breakdown', side:'short', on:true, mode:'all', n:2, cooldown:20, triggers:[{id:'lod'}, {id:'below_vwap'}, {id:'vol_spike', p:2}], cond:{minPrice:5}},
+  {id:'s5', name:'EMA pullback', side:'long', on:false, mode:'all', n:2, cooldown:20, triggers:[{id:'ema_bounce'}, {id:'above_vwap'}], cond:{minPrice:5}},
+];
+const fmtP = n => n == null ? '–' : n.toFixed(n < 10 ? 3 : 2).replace(/(\.\d\d)0$/, '$1');
+const fmtC = n => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%';
+const fmtV = n => n == null ? '–' : n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n));
+const cls = n => n >= 0 ? 'up' : 'down';
+
+const engine = createEngine();
+engine.setups = store.get('setups', null) || JSON.parse(JSON.stringify(DEFAULT_SETUPS));
+let symbols = store.get('symbols', null) || Object.keys(SIM_BASE);
+if (!symbols.includes('SPY')) symbols.unshift('SPY');
+const settings = Object.assign({mode:'sim', feed:'iex', remember:true, sound:false, awake:false}, store.get('settings', {}));
+let keys = store.get('keys', {id:'', secret:''});
+const ui = {view:'alerts', filter:'all', rank:'gainers', scope:'mine', newsScope:'market', unseen:0, sheet:null, liveMsg:'', liveState:'off', freshId:0};
+const notes = [];                 // practice-mode market notes
+const market = {movers:null, actives:null, at:0, err:''};
+const news = {market:null, mine:null, at:{}, err:''};
+const saveSetups = () => store.set('setups', engine.setups);
+const saveSettings = () => store.set('settings', settings);
+
+/* ---------- rendering ---------- */
+let dirty = false;
+function invalidate(){ if (dirty) return; dirty = true; requestAnimationFrame(() => { dirty = false; render(); }); }
+function render(){
+  renderStatus();
+  const m = $('main');
+  m.innerHTML = ({alerts:viewAlerts, setups:viewSetups, rankings:viewRankings, news:viewNews}[ui.view] || viewAlerts)();
+  document.querySelectorAll('nav a').forEach(a => a.dataset.view === ui.view ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  const b = $('badge'); b.hidden = !ui.unseen || ui.view === 'alerts'; b.textContent = ui.unseen > 99 ? '99+' : ui.unseen;
+  if (ui.sheet && ui.sheet.type === 'info') renderInfo();
+}
+function lastBarT(){ let t = 0; for (const s of engine.states.values()) if (s.lastT > t) t = s.lastT; return t; }
+function renderStatus(){
+  const p = $('status'), t = lastBarT(); let txt, c = 'sim';
+  if (settings.mode === 'sim') txt = 'SIMULATED' + (t ? ' · ' + ET.time(t) + ' ET' : '');
+  else if (ui.liveState === 'live'){
+    c = 'live'; const today = ET.parts(Date.now()).key, k = t ? ET.parts(t).key : '';
+    txt = settings.feed.toUpperCase() + (t ? (k === today ? ' · ' + ET.time(t) + ' ET' : ' · LAST SESSION ' + k.slice(5)) : ' · WAITING');
+  } else if (ui.liveState === 'error'){ c = 'err'; txt = 'NOT CONNECTED'; }
+  else { c = ''; txt = 'CONNECTING'; }
+  p.className = 'pill ' + c; $('statusText').textContent = txt;
+  $('simBanner').hidden = settings.mode !== 'sim';
+}
+function alertCard(a){
+  return `<button class="alert ${a.side === 'short' ? 'short' : ''} ${a.id === ui.freshId ? 'fresh' : ''}" data-sym="${esc(a.sym)}">
+    <span class="stripe"></span><span class="body">
+    <span class="row"><span class="sym">${esc(a.sym)}</span><span class="side ${a.side === 'short' ? 'short' : ''}">${a.side === 'short' ? 'SHORT' : 'LONG'}</span><span class="grow"></span><span class="num">${fmtP(a.price)}</span><span class="num ${cls(a.chg)}">${fmtC(a.chg)}</span></span>
+    <span class="row"><span class="grow">${esc(a.setup)}</span><span class="num muted">${ET.time(a.t)} ET${a.rvol ? ' · vol ' + a.rvol.toFixed(1) + '×' : ''}</span></span>
+    <span class="tags">${a.hits.map(h => `<span class="tag">${esc(h)}</span>`).join('')}</span></span></button>`;
+}
+function viewAlerts(){
+  const all = engine.alerts, list = ui.filter === 'all' ? all : all.filter(a => a.setupId === ui.filter);
+  const on = engine.setups.filter(s => s.on).length;
+  let h = `<div class="summary"><b>${all.length}</b><span class="muted">alerts this session${all.length ? ', latest ' + ET.time(all[0].t) + ' ET' : ''} · ${on} setup${on === 1 ? '' : 's'} on · ${engine.states.size} symbols</span></div>`;
+  h += `<div class="chips"><button class="chip" data-act="filter" data-id="all" aria-pressed="${ui.filter === 'all'}">All</button>${engine.setups.map(s => `<button class="chip" data-act="filter" data-id="${esc(s.id)}" aria-pressed="${ui.filter === s.id}">${esc(s.name)}</button>`).join('')}</div>`;
+  if (!list.length) h += `<div class="empty">${on ? 'No alerts yet. They appear here as each one-minute bar closes.' : 'Every setup is switched off. Turn one on in Setups.'}</div>`;
+  else h += `<div class="list">${list.slice(0, 120).map(alertCard).join('')}</div>`;
+  return h;
+}
+function logicText(st){
+  const how = st.mode === 'all' ? 'All of' : st.mode === 'any' ? 'Any of' : `At least ${Math.min(st.n || 1, st.triggers.length)} of`;
+  return how + ': ' + (st.triggers.map(trigLabel).join(', ') || 'no triggers');
+}
+function viewSetups(){
+  let h = `<div class="row"><h2 class="grow">Your setups</h2><button class="btn small primary" data-act="new-setup">New setup</button></div><div class="list">`;
+  for (const st of engine.setups){
+    const x = engine.stats[st.id] || {alerts:0, blocked:0, why:{}};
+    const why = Object.entries(x.why).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+    h += `<div class="card"><div class="row"><span class="sym grow">${esc(st.name)}</span><span class="side ${st.side === 'short' ? 'short' : ''}">${st.side === 'short' ? 'SHORT' : 'LONG'}</span>
+      <button class="switch" role="switch" aria-checked="${!!st.on}" aria-label="Turn ${esc(st.name)} ${st.on ? 'off' : 'on'}" data-act="toggle-setup" data-id="${esc(st.id)}"></button></div>
+      <div class="logic">${esc(logicText(st))}</div>
+      <div class="row stat"><span class="grow"><span class="num">${x.alerts}</span> alerts this session · <span class="num">${x.blocked}</span> blocked by conditions${why ? ' (' + esc(why) + ')' : ''}</span>
+      <button class="btn small" data-act="edit-setup" data-id="${esc(st.id)}">Edit</button></div></div>`;
+  }
+  h += `</div><p class="note">Changes apply on the next one-minute bar. A setup alerts once per symbol, then waits out its cooldown.</p>`;
+  return h;
+}
+const RANKS = [['gainers', 'Gainers'], ['losers', 'Losers'], ['active', 'Most active'], ['highs', 'New highs'], ['lows', 'New lows']];
+function viewRankings(){
+  const live = settings.mode === 'live' && ui.liveState === 'live', canMarket = live && ['gainers', 'losers', 'active'].includes(ui.rank);
+  const scope = canMarket ? ui.scope : 'mine';
+  let h = `<div class="chips">${RANKS.map(([k, n]) => `<button class="chip" data-act="rank" data-id="${k}" aria-pressed="${ui.rank === k}">${n}</button>`).join('')}</div>`;
+  if (canMarket) h += `<div class="seg"><input type="radio" name="scope" id="scMine" value="mine" ${scope === 'mine' ? 'checked' : ''}><label for="scMine">My symbols</label><input type="radio" name="scope" id="scMkt" value="market" ${scope === 'market' ? 'checked' : ''}><label for="scMkt">Whole market</label></div>`;
+  let rows = [];
+  if (scope === 'market'){
+    if (market.err) return h + `<div class="empty">${esc(market.err)}</div>`;
+    if (!market.movers) return h + `<div class="empty">Loading the market list from Alpaca…</div>`;
+    if (ui.rank === 'active') rows = (market.actives || []).map(x => ({sym:x.symbol, a:fmtV(x.volume), b:fmtV(x.trade_count) + ' trades', bc:'muted'}));
+    else rows = (market.movers[ui.rank] || []).map(x => ({sym:x.symbol, a:fmtP(x.price), b:fmtC(x.percent_change), bc:cls(x.percent_change)}));
+  } else {
+    const ss = [...engine.states.values()].filter(s => s.bars.length), now = lastBarT();
+    const base = s => ({sym:s.sym, a:fmtP(s.last), b:fmtC(s.chg), bc:cls(s.chg)});
+    if (ui.rank === 'gainers') rows = ss.filter(s => s.chg > 0).sort((a, b) => b.chg - a.chg).map(base);
+    if (ui.rank === 'losers') rows = ss.filter(s => s.chg < 0).sort((a, b) => a.chg - b.chg).map(base);
+    if (ui.rank === 'active') rows = ss.sort((a, b) => b.dayVol * b.last - a.dayVol * a.last).map(s => ({sym:s.sym, a:fmtV(s.dayVol), b:fmtC(s.chg), bc:cls(s.chg)}));
+    if (ui.rank === 'highs') rows = ss.filter(s => s.lastHodT && now - s.lastHodT <= 15 * 60000).sort((a, b) => b.lastHodT - a.lastHodT).map(s => ({sym:s.sym, a:fmtP(s.hi), b:ET.time(s.lastHodT), bc:'muted'}));
+    if (ui.rank === 'lows') rows = ss.filter(s => s.lastLodT && now - s.lastLodT <= 15 * 60000).sort((a, b) => b.lastLodT - a.lastLodT).map(s => ({sym:s.sym, a:fmtP(s.lo), b:ET.time(s.lastLodT), bc:'muted'}));
+  }
+  const cap = {gainers:'Up most from the previous close', losers:'Down most from the previous close', active:scope === 'market' ? 'Most shares traded today' : 'Most traded today, by dollar volume', highs:'Made a new high of day in the last 15 minutes', lows:'Made a new low of day in the last 15 minutes'}[ui.rank];
+  h += `<h2>${esc(cap)}${scope === 'mine' ? ' · your symbols' : ''}</h2>`;
+  if (!rows.length) return h + `<div class="empty">Nothing on this list right now.</div>`;
+  return h + `<div class="table">${rows.slice(0, 30).map((r, i) => `<button class="trow" data-sym="${esc(r.sym)}"><span class="rank">${i + 1}</span><span><span class="sym">${esc(r.sym)}</span><span class="nm">${esc(NAMES[r.sym] || '')}</span></span><span class="num val">${esc(r.a)}</span><span class="num val ${r.bc}">${esc(r.b)}</span></button>`).join('')}</div>`;
+}
+function ago(ms){ const m = Math.max(0, Math.round((Date.now() - ms) / 60000)); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; }
+function newsItem(n){
+  const syms = (n.symbols || []).slice(0, 6).map(s => `<button class="tag" data-sym="${esc(s)}">${esc(s)}</button>`).join('');
+  const safe = /^https?:\/\//i.test(n.url || '') ? n.url : '';
+  const head = safe ? `<a class="hl" href="${esc(safe)}" target="_blank" rel="noopener noreferrer" style="color:inherit">${esc(n.headline)}</a>` : `<span class="hl">${esc(n.headline)}</span>`;
+  return `<div class="news">${head}<span class="meta">${esc(n.source || '')}${n.created_at ? ' · ' + ago(Date.parse(n.created_at)) : ''}</span>${syms ? `<span class="tags">${syms}</span>` : ''}</div>`;
+}
+function viewNews(){
+  if (settings.mode !== 'live' || ui.liveState !== 'live'){
+    let h = `<h2>Practice notes</h2><p class="note">These lines are generated from the simulated prices. They are not real news. Connect Alpaca to see real headlines here.</p>`;
+    if (!notes.length) return h + `<div class="empty">Notes appear as setups fire.</div>`;
+    return h + `<div class="list">${notes.slice(0, 40).map(n => `<div class="news"><span class="hl">${esc(n.text)}</span><span class="meta">Simulated · ${ET.time(n.t)} ET</span><span class="tags"><button class="tag" data-sym="${esc(n.sym)}">${esc(n.sym)}</button></span></div>`).join('')}</div>`;
+  }
+  let h = `<div class="seg"><input type="radio" name="newsScope" id="nsMkt" value="market" ${ui.newsScope === 'market' ? 'checked' : ''}><label for="nsMkt">All headlines</label><input type="radio" name="newsScope" id="nsMine" value="mine" ${ui.newsScope === 'mine' ? 'checked' : ''}><label for="nsMine">My symbols</label></div>`;
+  const list = news[ui.newsScope];
+  if (news.err && !list) return h + `<div class="empty">${esc(news.err)}</div>`;
+  if (!list) return h + `<div class="empty">Loading headlines…</div>`;
+  if (!list.length) return h + `<div class="empty">No recent headlines.</div>`;
+  return h + `<div class="row"><span class="note grow">From Alpaca's news feed. Tap a headline to read it at the source.</span><button class="btn small" data-act="refresh-news">Refresh</button></div><div class="list">${list.map(newsItem).join('')}</div>`;
+}
+
+/* ---------- sheets ---------- */
+function openSheet(type, title, data){ ui.sheet = Object.assign({type}, data || {}); $('sheetTitle').textContent = title; $('sheet').classList.add('open'); $('scrim').classList.add('open'); $('sheetBody').scrollTop = 0; }
+function closeSheet(){ ui.sheet = null; $('sheet').classList.remove('open'); $('scrim').classList.remove('open'); }
+
+function spark(s){
+  const W = 320, H = 84, pad = 6, cs = s.bars.map(b => b.c);
+  let lo = Math.min(...cs), hi = Math.max(...cs);
+  const pc = s.pdClose; const showPc = pc != null && pc >= lo - (hi - lo) && pc <= hi + (hi - lo);
+  if (showPc){ lo = Math.min(lo, pc); hi = Math.max(hi, pc); }
+  if (hi === lo){ hi += 0.01; lo -= 0.01; }
+  const x = i => pad + (W - 62 - pad) * (cs.length < 2 ? 0 : i / (cs.length - 1)), y = v => pad + (H - 2 * pad) * (1 - (v - lo) / (hi - lo));
+  const pts = cs.map((c, i) => x(i).toFixed(1) + ',' + y(c).toFixed(1)).join(' ');
+  const col = s.chg >= 0 ? 'var(--up)' : 'var(--down)', lx = x(cs.length - 1), ly = y(cs[cs.length - 1]);
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Price through the session">
+    <polygon points="${pad},${H - pad} ${pts} ${lx.toFixed(1)},${H - pad}" fill="${col}" opacity=".12"/>
+    ${showPc ? `<line x1="${pad}" x2="${W - 62}" y1="${y(pc)}" y2="${y(pc)}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/>` : ''}
+    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle cx="${lx}" cy="${ly}" r="3.2" fill="${col}"/>
+    <text x="${W - 6}" y="${pad + 9}" text-anchor="end" font-size="10.5" fill="var(--muted)" font-family="var(--font-num)">${fmtP(hi)}</text>
+    <text x="${W - 6}" y="${H - pad}" text-anchor="end" font-size="10.5" fill="var(--muted)" font-family="var(--font-num)">${fmtP(lo)}</text>
+    ${showPc ? `<text x="${W - 6}" y="${Math.min(H - pad - 12, Math.max(pad + 21, y(pc) + 3))}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--font-ui)">prev close</text>` : ''}
+  </svg>`;
+}
+function renderInfo(){
+  const sym = ui.sheet.sym, s = engine.states.get(sym), body = $('sheetBody'), keep = body.scrollTop;
+  if (!s || !s.bars.length){
+    const mine = symbols.includes(sym);
+    body.innerHTML = `<p class="note">${mine ? 'No bars for ' + esc(sym) + ' in the latest session yet.' : esc(sym) + ' is not in your symbols, so the scanner is not watching it.'}</p>${mine ? '' : `<button class="btn primary block" data-act="add-sym" data-id="${esc(sym)}">Add ${esc(sym)} to my symbols</button>`}`;
+    return;
+  }
+  const spy = engine.states.get('SPY'), rs = spy && spy.dateKey === s.dateKey && sym !== 'SPY' ? s.chg - spy.chg : null;
+  const pos = s.hi > s.lo ? (s.last - s.lo) / (s.hi - s.lo) * 100 : 50, or = orRange(s, 15);
+  const al = engine.alerts.filter(a => a.sym === sym).slice(0, 5);
+  const nn = (ui.sheet.news || []).slice(0, 4);
+  body.innerHTML = `
+    <div><div class="row"><span class="big">${fmtP(s.last)}</span><span class="num ${cls(s.chg)}" style="font-size:17px">${fmtC(s.chg)}</span><span class="grow"></span><span class="muted num">${ET.time(s.lastT)} ET</span></div>
+    <div class="muted">${esc(NAMES[sym] || '')}${settings.mode === 'sim' ? (NAMES[sym] ? ' · ' : '') + 'simulated price' : ''}</div></div>
+    ${spark(s)}
+    <div><div class="range"><i style="left:${pos.toFixed(1)}%"></i></div><div class="row muted num" style="font-size:12px"><span>Low ${fmtP(s.lo)}</span><span class="grow"></span><span>High ${fmtP(s.hi)}</span></div></div>
+    <div class="stats num">
+      <div><span>Open</span><span>${fmtP(s.open)}</span></div><div><span>Prev close</span><span>${fmtP(s.pdClose)}</span></div>
+      <div><span>VWAP</span><span class="${cls(s.last - s.vwap)}">${fmtP(s.vwap)}</span></div><div><span>Volume</span><span>${fmtV(s.dayVol)}</span></div>
+      <div><span>EMA 9</span><span>${fmtP(s.ema9)}</span></div><div><span>EMA 20</span><span>${fmtP(s.ema20)}</span></div>
+      <div><span>15m range</span><span>${or ? fmtP(or.l) + '–' + fmtP(or.h) : '–'}</span></div><div><span>vs SPY</span><span class="${rs == null ? '' : cls(rs)}">${rs == null ? '–' : fmtC(rs)}</span></div>
+      <div><span>Prev high</span><span>${fmtP(s.pdHigh)}</span></div><div><span>Prev low</span><span>${fmtP(s.pdLow)}</span></div>
+    </div>
+    <h2>Alerts on ${esc(sym)}</h2>
+    ${al.length ? `<div class="list">${al.map(a => `<div class="card"><div class="row"><span class="grow">${esc(a.setup)}</span><span class="num muted">${ET.time(a.t)} ET · ${fmtP(a.price)}</span></div><div class="tags">${a.hits.map(x => `<span class="tag">${esc(x)}</span>`).join('')}</div></div>`).join('')}</div>` : `<div class="empty">No alerts on this symbol this session.</div>`}
+    ${nn.length ? `<h2>Headlines</h2><div class="list">${nn.map(newsItem).join('')}</div>` : ''}`;
+  body.scrollTop = keep;
+}
+function openInfo(sym){
+  openSheet('info', sym, {sym, news:null}); renderInfo();
+  if (settings.mode === 'live' && ui.liveState === 'live') api('/v1beta1/news', {symbols:sym, limit:5, sort:'desc'}).then(r => { if (ui.sheet && ui.sheet.sym === sym){ ui.sheet.news = r.news || []; renderInfo(); } }).catch(() => {});
+}
+
+let draft = null;
+function openEditor(id){
+  const st = engine.setups.find(s => s.id === id);
+  draft = st ? JSON.parse(JSON.stringify(st)) : {id:'u' + Date.now().toString(36), name:'', side:'long', on:true, mode:'all', n:2, cooldown:10, triggers:[], cond:{}};
+  draft.isNew = !st; draft.cond = draft.cond || {};
+  openSheet('editor', st ? 'Edit setup' : 'New setup');
+  const groups = {}; for (const [tid, d] of Object.entries(TRIGGERS)) (groups[d.g] = groups[d.g] || []).push([tid, d]);
+  const has = tid => draft.triggers.find(t => t.id === tid);
+  const cv = k => draft.cond[k] == null ? '' : esc(draft.cond[k]);
+  $('sheetBody').innerHTML = `
+    <div class="field"><label for="edName">Name</label><input type="text" id="edName" data-f="name" value="${esc(draft.name)}" placeholder="Morning breakout" autocomplete="off"></div>
+    <div class="field"><span class="legend">Direction</span><div class="seg"><input type="radio" name="side" id="edLong" value="long" ${draft.side !== 'short' ? 'checked' : ''}><label for="edLong">Long</label><input type="radio" name="side" id="edShort" value="short" ${draft.side === 'short' ? 'checked' : ''}><label for="edShort">Short</label></div></div>
+    <div class="field"><span class="legend">Alert when</span><div class="seg"><input type="radio" name="mode" id="edAll" value="all" ${draft.mode === 'all' ? 'checked' : ''}><label for="edAll">All match</label><input type="radio" name="mode" id="edAny" value="any" ${draft.mode === 'any' ? 'checked' : ''}><label for="edAny">Any matches</label><input type="radio" name="mode" id="edN" value="n" ${draft.mode === 'n' ? 'checked' : ''}><label for="edN">At least N</label></div></div>
+    <div class="grid2"><div class="field"><label for="edNval">N (for "at least N")</label><input type="number" id="edNval" data-f="n" min="1" step="1" inputmode="numeric" value="${esc(draft.n || 2)}"></div>
+    <div class="field"><label for="edCool">Cooldown, minutes</label><input type="number" id="edCool" data-f="cooldown" min="0" step="1" inputmode="numeric" value="${esc(draft.cooldown == null ? 10 : draft.cooldown)}"></div></div>
+    <div class="field"><span class="legend">Triggers</span>${Object.entries(groups).map(([g, list]) => `<div class="group"><h4>${esc(g)}</h4>${list.map(([tid, d]) => { const t = has(tid); return `<div class="trig"><input type="checkbox" id="tc_${tid}" data-tc="${tid}" ${t ? 'checked' : ''}><label for="tc_${tid}">${esc(d.name)}</label>${d.param ? `<input class="p" type="number" id="tp_${tid}" data-tp="${tid}" inputmode="decimal" step="${d.param.step}" min="0" value="${esc(t && t.p != null ? t.p : d.param.def)}" aria-label="${esc(d.param.label)} for ${esc(d.name)}" ${t ? '' : 'disabled'}><small>${esc(d.param.unit)}</small>` : ''}</div>`; }).join('')}</div>`).join('')}</div>
+    <div class="field"><span class="legend">Extra conditions (leave blank to skip)</span><div class="grid2">
+      <div class="field"><label for="cMinP">Min price, $</label><input type="number" id="cMinP" data-c="minPrice" inputmode="decimal" min="0" step="0.5" value="${cv('minPrice')}"></div>
+      <div class="field"><label for="cMaxP">Max price, $</label><input type="number" id="cMaxP" data-c="maxPrice" inputmode="decimal" min="0" step="0.5" value="${cv('maxPrice')}"></div>
+      <div class="field"><label for="cVol">Min day volume, thousands</label><input type="number" id="cVol" data-c="minDayVol" inputmode="numeric" min="0" step="50" value="${cv('minDayVol')}"></div>
+      <div class="field"><label for="cChg">Min day move, %</label><input type="number" id="cChg" data-c="minChg" inputmode="decimal" min="0" step="0.5" value="${cv('minChg')}"></div></div></div>
+    <div class="msg bad" id="edMsg" hidden></div>
+    <button class="btn primary block" data-act="save-setup">Save setup</button>
+    ${draft.isNew ? '' : `<button class="btn danger block" data-act="delete-setup" id="edDel">Delete setup</button>`}`;
+}
+function saveDraft(){
+  const msg = $('edMsg'), fail = t => { msg.hidden = false; msg.textContent = t; };
+  draft.name = (draft.name || '').trim();
+  if (!draft.name) return fail('Give the setup a name.');
+  if (!draft.triggers.length) return fail('Pick at least one trigger.');
+  draft.n = Math.max(1, Math.round(+draft.n || 1));
+  const isNew = draft.isNew; delete draft.isNew;
+  const i = engine.setups.findIndex(s => s.id === draft.id);
+  if (i >= 0) engine.setups[i] = draft; else engine.setups.push(draft);
+  if (isNew) engine.stats[draft.id] = {alerts:0, blocked:0, why:{}};
+  saveSetups(); closeSheet(); invalidate();
+}
+
+function openSettings(){
+  openSheet('settings', 'Settings');
+  const limit = settings.feed === 'iex' ? 30 : 500;
+  $('sheetBody').innerHTML = `
+    <div class="field"><span class="legend">Price data</span><div class="seg"><input type="radio" name="mode" id="mSim" value="sim" ${settings.mode === 'sim' ? 'checked' : ''}><label for="mSim">Practice (simulated)</label><input type="radio" name="mode" id="mLive" value="live" ${settings.mode === 'live' ? 'checked' : ''}><label for="mLive">Live (Alpaca)</label></div></div>
+    <div class="card" id="liveBox">
+      <div class="field"><label for="kId">Alpaca API key ID</label><input type="text" id="kId" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(keys.id)}"></div>
+      <div class="field"><label for="kSecret">Alpaca secret key</label><input type="password" id="kSecret" autocomplete="off" spellcheck="false" value="${esc(keys.secret)}"></div>
+      <div class="field"><label for="kFeed">Feed</label><select id="kFeed"><option value="iex" ${settings.feed === 'iex' ? 'selected' : ''}>IEX (free plan, 30 symbols)</option><option value="sip" ${settings.feed === 'sip' ? 'selected' : ''}>SIP (paid plan, all exchanges)</option></select></div>
+      <label class="check"><input type="checkbox" id="kRemember" ${settings.remember ? 'checked' : ''}>Remember keys on this device</label>
+      <div class="row"><button class="btn primary grow" data-act="connect">Connect</button><button class="btn" data-act="forget">Forget keys</button></div>
+      <div class="msg ${ui.liveState === 'error' ? 'bad' : ui.liveState === 'live' ? 'good' : ''}" id="liveMsg" ${ui.liveMsg ? '' : 'hidden'}>${esc(ui.liveMsg)}</div>
+      <p class="note">Keys go straight from this page to Alpaca and are stored only in this browser. This app reads market data and never places orders, but Alpaca keys can trade, so keys from a paper account are the safer choice.</p>
+    </div>
+    <div class="field"><span class="legend">My symbols (<span id="symCount">${symbols.length}</span> of ${limit}${settings.feed === 'iex' ? ' on the free feed' : ''})</span>
+      <div class="symchips" id="symChips">${symChips()}</div>
+      <div class="row"><input type="text" id="symAdd" placeholder="Add tickers, e.g. CRM, SNOW" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:10px 11px;font-size:16px"><button class="btn" data-act="add-syms">Add</button></div>
+      <div class="msg bad" id="symMsg" hidden></div></div>
+    <div class="field"><span class="legend">While scanning</span>
+      <label class="check"><input type="checkbox" id="optSound" ${settings.sound ? 'checked' : ''}>Beep on each new alert</label>
+      <label class="check"><input type="checkbox" id="optAwake" ${settings.awake ? 'checked' : ''}>Keep the screen awake</label></div>
+    <button class="btn block" data-act="reset-setups">Restore the sample setups</button>
+    <p class="note">Alerts only arrive while this app is open on screen. It watches the regular session, 9:30 to 16:00 Eastern, on one-minute bars. A phone take on the open-source Edge Scanner project. For learning only, not financial advice.</p>`;
+}
+const symChips = () => symbols.map(s => s === 'SPY' ? `<span class="symchip lock" title="Needed for relative strength">SPY</span>` : `<span class="symchip">${esc(s)}<button data-act="rm-sym" data-id="${esc(s)}" aria-label="Remove ${esc(s)}">×</button></span>`).join('');
+function symbolsChanged(){
+  store.set('symbols', symbols);
+  if ($('symChips')){ $('symChips').innerHTML = symChips(); $('symCount').textContent = symbols.length; }
+  if (settings.mode === 'live') connectLive(); else startSim();
+}
+function addSymbols(raw){
+  const limit = settings.feed === 'iex' && settings.mode === 'live' ? 30 : 500, msg = $('symMsg');
+  const add = String(raw).toUpperCase().split(/[\s,;]+/).filter(x => /^[A-Z][A-Z.]{0,5}$/.test(x) && !symbols.includes(x));
+  if (!add.length){ if (msg){ msg.hidden = false; msg.textContent = 'Enter one or more tickers that are not already on the list.'; } return; }
+  const room = limit - symbols.length;
+  if (room <= 0){ if (msg){ msg.hidden = false; msg.textContent = `The free IEX feed streams ${limit} symbols. Remove one first, or switch to SIP.`; } return; }
+  symbols.push(...add.slice(0, room)); if (msg) msg.hidden = true; if ($('symAdd')) $('symAdd').value = '';
+  symbolsChanged();
+}
+
+/* ---------- alerts side effects ---------- */
+let audio = null;
+function beep(){ try { if (!audio) return; const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = 880; g.gain.setValueAtTime(0.0001, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.2, audio.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.25); o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.27); } catch (e){} }
+let wake = null;
+async function setAwake(on){ try { if (on && navigator.wakeLock){ wake = await navigator.wakeLock.request('screen'); } else if (wake){ await wake.release(); wake = null; } } catch (e){} }
+const noteAt = new Map();
+engine.onAlert = (a, opts) => {
+  if (settings.mode === 'sim'){
+    const lt = noteAt.get(a.sym);
+    if (!lt || a.t - lt > 20 * 60000){
+      noteAt.set(a.sym, a.t);
+      notes.unshift({t:a.t, sym:a.sym, text:`${a.sym} ${a.side === 'short' ? 'slips' : 'pushes up'} to ${fmtP(a.price)}, ${fmtC(a.chg)} on the day, as ${a.setup} fires`});
+      if (notes.length > 60) notes.pop();
+    }
+  }
+  if (opts.live){ ui.freshId = a.id; if (ui.view !== 'alerts') ui.unseen++; if (settings.sound) beep(); }
+};
+
+/* ---------- practice mode ---------- */
+let simTimer = null, sim = null, simDayOpen = 0, simMin = 0;
+function stopSim(){ clearInterval(simTimer); simTimer = null; }
+function simStep(opts){
+  if (simMin >= 390){ simDayOpen = ET.open(ET.parts(simDayOpen + 30 * 3600000).key); simMin = 0; sim.newDay(); engine.stats = {}; engine.alerts = []; engine.alertFrom = ET.parts(simDayOpen).key; }
+  const t = simDayOpen + simMin * 60000;
+  for (const s of symbols) engine.onBar(s, sim.bar(s, t, simMin), opts);
+  simMin++;
+}
+function startSim(){
+  stopLive(); stopSim(); engine.reset(); notes.length = 0; noteAt.clear(); sim = createSim();
+  const today = ET.parts(Date.now()).key;
+  simDayOpen = ET.open(ET.parts(ET.open(today) - 20 * 3600000).key); simMin = 0;
+  engine.alertFrom = today;
+  for (let i = 0; i < 390; i++) simStep({});              // previous day, for prior high, low and close
+  simMin = 390;
+  for (let i = 0; i < 75; i++) simStep({});               // today up to 10:45
+  simTimer = setInterval(() => { if (!document.hidden){ simStep({live:true}); invalidate(); } }, 2000);
+  invalidate();
+}
+
+/* ---------- live mode (Alpaca) ---------- */
+const live = {ws:null, retry:null, gen:0, pollM:null, pollN:null};
+async function api(path, params){
+  const u = new URL('https://data.alpaca.markets' + path);
+  for (const [k, v] of Object.entries(params || {})) if (v != null && v !== '') u.searchParams.set(k, v);
+  let r;
+  try { r = await fetch(u, {headers:{'APCA-API-KEY-ID':keys.id, 'APCA-API-SECRET-KEY':keys.secret}}); }
+  catch (e){ const err = new Error('blocked'); err.blocked = true; throw err; }
+  if (!r.ok){ const err = new Error('HTTP ' + r.status); err.status = r.status; throw err; }
+  return r.json();
+}
+function explain(e){
+  if (e.blocked) return 'This page could not reach Alpaca. Inside the Claude app outside connections are blocked, so live data only works from your own hosted copy of this page. Staying in practice mode.';
+  if (e.status === 401 || e.status === 403) return 'Alpaca rejected those keys. Check the key ID and secret, and that the feed matches your plan.';
+  if (e.status === 429) return 'Alpaca is rate limiting requests. Wait a minute and connect again.';
+  return 'Alpaca returned an error (' + (e.status || e.message) + ').';
+}
+function setLive(state, msg){ ui.liveState = state; ui.liveMsg = msg || ''; const m = $('liveMsg'); if (m){ m.hidden = !msg; m.textContent = msg || ''; m.className = 'msg ' + (state === 'error' ? 'bad' : state === 'live' ? 'good' : ''); } invalidate(); }
+function stopLive(){ live.gen++; clearTimeout(live.retry); clearInterval(live.pollM); clearInterval(live.pollN); if (live.ws){ try { live.ws.onclose = null; live.ws.close(); } catch (e){} live.ws = null; } }
+async function connectLive(){
+  stopLive(); stopSim();
+  const gen = live.gen;
+  if (!keys.id || !keys.secret){ settings.mode = 'sim'; saveSettings(); setLive('error', 'Enter your Alpaca key ID and secret first.'); startSim(); ui.liveState = 'error'; return; }
+  settings.mode = 'live'; saveSettings(); setLive('connecting', 'Loading recent bars from Alpaca…');
+  try {
+    const all = []; let token = null, pages = 0;
+    do {
+      const r = await api('/v2/stocks/bars', {symbols:symbols.join(','), timeframe:'1Min', start:new Date(Date.now() - 6 * 86400000).toISOString(), limit:10000, feed:settings.feed, adjustment:'raw', sort:'asc', page_token:token});
+      if (gen !== live.gen) return;
+      for (const [sym, bars] of Object.entries(r.bars || {})) for (const b of bars) all.push([sym, {t:Date.parse(b.t), o:b.o, h:b.h, l:b.l, c:b.c, v:b.v}]);
+      token = r.next_page_token;
+    } while (token && ++pages < 40);
+    engine.reset(); notes.length = 0;
+    all.sort((a, b) => a[1].t - b[1].t || (a[0] === 'SPY' ? -1 : b[0] === 'SPY' ? 1 : 0));
+    let latest = ''; for (const [, b] of all){ const p = ET.parts(b.t); if (p.min >= 570 && p.min < 960 && p.key > latest) latest = p.key; }
+    engine.alertFrom = latest;
+    for (const [sym, b] of all) engine.onBar(sym, b, {});
+  } catch (e){
+    if (gen !== live.gen) return;
+    const msg = explain(e); settings.mode = 'sim'; saveSettings(); startSim(); setLive('error', msg); return;
+  }
+  openSocket(gen);
+  market.movers = null; news.market = null; news.mine = null;
+  loadMarket(); loadNews();
+  live.pollM = setInterval(() => { if (!document.hidden && ui.view === 'rankings') loadMarket(); }, 60000);
+  live.pollN = setInterval(() => { if (!document.hidden && ui.view === 'news') loadNews(); }, 180000);
+}
+function openSocket(gen){
+  let ws; try { ws = new WebSocket('wss://stream.data.alpaca.markets/v2/' + settings.feed); } catch (e){ setLive('error', 'Could not open the live stream from this page.'); return; }
+  live.ws = ws;
+  ws.onmessage = ev => {
+    if (gen !== live.gen) return;
+    let arr; try { arr = JSON.parse(ev.data); } catch (e){ return; }
+    let got = false;
+    for (const m of [].concat(arr)){
+      if (m.T === 'success' && m.msg === 'connected') ws.send(JSON.stringify({action:'auth', key:keys.id, secret:keys.secret}));
+      else if (m.T === 'success' && m.msg === 'authenticated') ws.send(JSON.stringify({action:'subscribe', bars:symbols}));
+      else if (m.T === 'subscription') setLive('live', `Connected. Streaming one-minute bars for ${symbols.length} symbols on ${settings.feed.toUpperCase()}.`);
+      else if (m.T === 'error') setLive('error', m.code === 405 ? 'Alpaca says the symbol limit for your plan is exceeded. Remove some symbols.' : m.code === 406 ? 'Alpaca allows one live stream at a time on this plan, and another one is already open.' : 'Stream error: ' + (m.msg || m.code));
+      else if (m.T === 'b'){ engine.onBar(m.S, {t:Date.parse(m.t), o:m.o, h:m.h, l:m.l, c:m.c, v:m.v}, {live:true}); got = true; }
+    }
+    if (got) invalidate();
+  };
+  ws.onclose = () => { if (gen !== live.gen) return; if (ui.liveState === 'live' || ui.liveState === 'connecting'){ setLive('connecting', 'Stream dropped. Reconnecting in 10 seconds…'); live.retry = setTimeout(() => { if (gen === live.gen) openSocket(gen); }, 10000); } };
+  ws.onerror = () => {};
+}
+async function loadMarket(){
+  try { const [mv, ac] = await Promise.all([api('/v1beta1/screener/stocks/movers', {top:20}), api('/v1beta1/screener/stocks/most-actives', {top:20, by:'volume'})]); market.movers = mv; market.actives = ac.most_actives || []; market.err = ''; }
+  catch (e){ market.err = 'Could not load the market-wide list from Alpaca. Your own symbols still rank under My symbols.'; }
+  invalidate();
+}
+async function loadNews(){
+  try {
+    const [a, b] = await Promise.all([api('/v1beta1/news', {limit:40, sort:'desc'}), api('/v1beta1/news', {limit:40, sort:'desc', symbols:symbols.join(',')})]);
+    news.market = a.news || []; news.mine = b.news || []; news.err = '';
+  } catch (e){ news.err = 'Could not load headlines from Alpaca.'; }
+  invalidate();
+}
+
+/* ---------- events ---------- */
+function setView(v){ ui.view = ['alerts', 'setups', 'rankings', 'news'].includes(v) ? v : 'alerts'; if (ui.view === 'alerts') ui.unseen = 0; $('main').scrollTop = 0; render(); }
+window.addEventListener('hashchange', () => setView(location.hash.slice(1)));
+document.addEventListener('click', e => {
+  const symEl = e.target.closest('[data-sym]'), actEl = e.target.closest('[data-act]');
+  if (!actEl && symEl){ e.preventDefault(); openInfo(symEl.dataset.sym); return; }
+  if (!actEl) return;
+  const act = actEl.dataset.act, id = actEl.dataset.id;
+  if (act === 'close-sheet') closeSheet();
+  else if (act === 'open-settings') openSettings();
+  else if (act === 'filter'){ ui.filter = id; render(); }
+  else if (act === 'rank'){ ui.rank = id; render(); }
+  else if (act === 'toggle-setup'){ const st = engine.setups.find(s => s.id === id); if (st){ st.on = !st.on; saveSetups(); render(); } }
+  else if (act === 'edit-setup') openEditor(id);
+  else if (act === 'new-setup') openEditor(null);
+  else if (act === 'save-setup') saveDraft();
+  else if (act === 'delete-setup'){
+    if (actEl.dataset.armed){ engine.setups = engine.setups.filter(s => s.id !== draft.id); if (ui.filter === draft.id) ui.filter = 'all'; saveSetups(); closeSheet(); render(); }
+    else { actEl.dataset.armed = '1'; actEl.textContent = 'Tap again to delete for good'; }
+  }
+  else if (act === 'reset-setups'){
+    if (actEl.dataset.armed){ engine.setups = JSON.parse(JSON.stringify(DEFAULT_SETUPS)); ui.filter = 'all'; saveSetups(); actEl.textContent = 'Sample setups restored'; delete actEl.dataset.armed; render(); }
+    else { actEl.dataset.armed = '1'; actEl.textContent = 'Tap again to replace your setups'; }
+  }
+  else if (act === 'connect'){
+    keys = {id:$('kId').value.trim(), secret:$('kSecret').value.trim()}; settings.feed = $('kFeed').value; settings.remember = $('kRemember').checked;
+    if (settings.remember) store.set('keys', keys); else store.del('keys');
+    if (settings.feed === 'iex' && symbols.length > 30){ symbols = symbols.slice(0, 30); store.set('symbols', symbols); }
+    saveSettings(); connectLive();
+  }
+  else if (act === 'forget'){ keys = {id:'', secret:''}; store.del('keys'); $('kId').value = ''; $('kSecret').value = ''; if (settings.mode === 'live'){ settings.mode = 'sim'; saveSettings(); startSim(); } setLive('off', 'Keys removed from this device.'); $('mSim').checked = true; }
+  else if (act === 'rm-sym'){ symbols = symbols.filter(s => s !== id); engine.states.delete(id); symbolsChanged(); }
+  else if (act === 'add-syms') addSymbols($('symAdd').value);
+  else if (act === 'add-sym'){ addSymbols(id); closeSheet(); }
+  else if (act === 'refresh-news'){ news[ui.newsScope] = null; render(); loadNews(); }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (draft && t.dataset.f) draft[t.dataset.f] = t.value;
+  if (draft && t.dataset.c) draft.cond[t.dataset.c] = t.value;
+  if (draft && t.dataset.tp){ const tr = draft.triggers.find(x => x.id === t.dataset.tp); if (tr) tr.p = t.value; }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.tc && draft){
+    const tid = t.dataset.tc, pin = $('tp_' + tid);
+    if (t.checked){ const tr = {id:tid}; if (pin){ pin.disabled = false; tr.p = pin.value; } draft.triggers.push(tr); }
+    else { draft.triggers = draft.triggers.filter(x => x.id !== tid); if (pin) pin.disabled = true; }
+  }
+  else if (t.name === 'side' && draft) draft.side = t.value;
+  else if (t.name === 'mode' && ui.sheet && ui.sheet.type === 'editor') draft.mode = t.value;
+  else if (t.name === 'mode' && ui.sheet && ui.sheet.type === 'settings'){
+    if (t.value === 'sim'){ settings.mode = 'sim'; saveSettings(); ui.liveState = 'off'; startSim(); }
+    else { keys = {id:$('kId').value.trim(), secret:$('kSecret').value.trim()}; connectLive().then(() => { if (settings.mode === 'sim' && $('mSim')) $('mSim').checked = true; }); }
+  }
+  else if (t.name === 'scope'){ ui.scope = t.value; render(); }
+  else if (t.name === 'newsScope'){ ui.newsScope = t.value; render(); }
+  else if (t.id === 'optSound'){ settings.sound = t.checked; saveSettings(); if (t.checked){ try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); beep(); } catch (err){} } }
+  else if (t.id === 'optAwake'){ settings.awake = t.checked; saveSettings(); setAwake(t.checked); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.sheet) closeSheet(); if (e.key === 'Enter' && e.target.id === 'symAdd') addSymbols(e.target.value); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && settings.awake) setAwake(true); });
+
+/* ---------- start ---------- */
+ui.view = ['alerts', 'setups', 'rankings', 'news'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'alerts';
+if (settings.mode === 'live' && keys.id && keys.secret){ startSim(); connectLive(); } else { settings.mode = 'sim'; startSim(); }
+</script>
+</body>
+</html>
